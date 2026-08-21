@@ -1,0 +1,48 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: catsdogs-inference
+  labels:
+    app: catsdogs-inference
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: catsdogs-inference
+  template:
+    metadata:
+      labels:
+        app: catsdogs-inference
+    spec:
+      containers:
+        - name: catsdogs-inference
+          # Replace <TAG> with the CI-built image tag (e.g. the git SHA) at
+          # deploy time -- see .github/workflows/cd.yml
+          image: ghcr.io/OWNER/REPO/catsdogs-inference:<TAG>
+          imagePullPolicy: IfNotPresent
+          ports:
+            - containerPort: 8000
+          env:
+            - name: MODEL_PATH
+              value: "/app/models/model.pt"
+            - name: MODEL_VERSION
+              value: "v1.0.0"
+          resources:
+            requests:
+              cpu: "250m"
+              memory: "512Mi"
+            limits:
+              cpu: "1"
+              memory: "1Gi"
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 8000
+            initialDelaySeconds: 10
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 8000
+            initialDelaySeconds: 20
+            periodSeconds: 20

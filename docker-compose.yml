@@ -1,0 +1,19 @@
+services:
+  inference:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: catsdogs-inference:local
+    container_name: catsdogs-inference
+    ports:
+      - "8000:8000"
+    environment:
+      - MODEL_PATH=/app/models/model.pt
+      - MODEL_VERSION=v1.0.0
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+    restart: unless-stopped

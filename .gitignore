@@ -1,0 +1,29 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+.pytest_cache/
+*.egg-info/
+.venv/
+venv/
+
+# Data (tracked by DVC instead of Git -- see data/.gitignore for the
+# DVC-managed raw/processed entries)
+
+# Model artifacts (large binaries -- tracked by DVC/MLflow, not raw Git)
+/models/*.pt
+/models/*.h5
+/models/*.pkl
+
+# MLflow
+mlruns/
+mlflow.db
+mlartifacts/
+
+# Monitoring logs
+monitoring/performance_log.csv
+
+# Misc
+.DS_Store
+*.log
+.env

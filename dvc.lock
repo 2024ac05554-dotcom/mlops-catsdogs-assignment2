@@ -1,0 +1,53 @@
+schema: '2.0'
+stages:
+  preprocess:
+    cmd: python -m src.data_preprocessing
+    deps:
+    - path: data/raw
+      hash: md5
+      md5: fdc024bf78dd433b464d707040ec0af0.dir
+      size: 2555736
+      nfiles: 121
+    - path: src/data_preprocessing.py
+      hash: md5
+      md5: f252c00b7543c3c2b20a2902b3652c8c
+      size: 4766
+    outs:
+    - path: data/processed
+      hash: md5
+      md5: 0d89407520fcad9be6a2a92a799c7bcd.dir
+      size: 3648
+      nfiles: 3
+  train:
+    cmd: python -m src.train --epochs 5 --batch_size 16 --lr 1e-3
+    deps:
+    - path: data/processed
+      hash: md5
+      md5: 0d89407520fcad9be6a2a92a799c7bcd.dir
+      size: 3648
+      nfiles: 3
+    - path: src/model.py
+      hash: md5
+      md5: b95ad1cb04f358a483896ece48b10081
+      size: 1543
+    - path: src/train.py
+      hash: md5
+      md5: cd67ad9211942859a290d0b5c6b5ebe2
+      size: 7307
+    outs:
+    - path: models/confusion_matrix.png
+      hash: md5
+      md5: fbabd863ab8483914b5f2827d3d3be2d
+      size: 13034
+    - path: models/loss_curve.png
+      hash: md5
+      md5: fd600456745e4e570b671ba477665fbf
+      size: 20051
+    - path: models/metrics.json
+      hash: md5
+      md5: 8b1f7b35033a0022f1fc3c29aae047f5
+      size: 114
+    - path: models/model.pt
+      hash: md5
+      md5: a50fed38d36fafff71926ae324c85b99
+      size: 6828151

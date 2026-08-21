@@ -1,0 +1,86 @@
+name: CI - Test, Build & Publish
+
+on:
+  push:
+    branches: ["main"]
+  pull_request:
+    branches: ["main"]
+
+env:
+  IMAGE_NAME: ghcr.io/${{ github.repository }}/catsdogs-inference
+
+jobs:
+  test-and-build:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write   # needed to push to GitHub Container Registry (GHCR)
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: "pip"
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install torch==2.13.0 torchvision==0.28.0 --index-url https://download.pytorch.org/whl/cpu
+          pip install -r requirements.txt --extra-index-url https://download.pytorch.org/whl/cpu
+
+      - name: Generate demo data & train baseline model
+        # In a real run this step is replaced by `dvc pull` to fetch the
+        # DVC-tracked dataset/model artifacts committed by M1. Kept here so
+        # the pipeline is fully self-contained and reproducible in CI.
+        run: |
+          python scripts/generate_dummy_data.py --per_class 40
+          python -m src.train --epochs 2 --batch_size 8
+
+      - name: Run unit tests
+        run: pytest tests/ -v --junitxml=test-results.xml
+
+      - name: Upload test results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-results
+          path: test-results.xml
+
+      - name: Log in to GitHub Container Registry
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build Docker image
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          push: false
+          tags: ${{ env.IMAGE_NAME }}:${{ github.sha }}
+          load: true
+
+      - name: Smoke-test the built image
+        run: |
+          docker run -d --name ci-smoke -p 8000:8000 ${{ env.IMAGE_NAME }}:${{ github.sha }}
+          bash scripts/smoke_test.sh http://localhost:8000
+          docker stop ci-smoke
+
+      - name: Push Docker image to GHCR
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          push: true
+          tags: |
+            ${{ env.IMAGE_NAME }}:${{ github.sha }}
+            ${{ env.IMAGE_NAME }}:latest
