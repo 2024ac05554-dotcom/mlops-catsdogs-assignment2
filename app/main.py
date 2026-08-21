@@ -89,6 +89,7 @@ async def log_requests(request, call_next):
 
 @app.get("/health", response_model=HealthResponse)
 def health():
+    """Liveness/readiness probe target for Docker/K8s and the CI/CD smoke tests."""
     return HealthResponse(
         status="ok",
         model_loaded=_model is not None,
