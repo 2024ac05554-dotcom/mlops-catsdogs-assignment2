@@ -1,6 +1,5 @@
-name: CD - Deploy & Smoke Test
+﻿name: CD - Deploy & Smoke Test
 
-# Runs after CI succeeds on main, i.e. continuous deployment on every merge.
 on:
   workflow_run:
     workflows: ["CI - Test, Build & Publish"]
@@ -45,17 +44,15 @@ jobs:
           kubectl apply -f k8s/service.yaml
           kubectl rollout status deployment/catsdogs-inference --timeout=120s
 
-      - name: Port-forward the service for smoke testing
+      - name: Port-forward and run post-deploy smoke tests
         run: |
           kubectl port-forward svc/catsdogs-inference-svc 8000:8000 &
           sleep 5
-
-      - name: Run post-deploy smoke tests (health + prediction)
-        run: bash scripts/smoke_test.sh http://localhost:8000 tests/fixtures/sample_cat.jpg
+          bash scripts/smoke_test.sh http://localhost:8000 tests/fixtures/sample_cat.jpg
 
       - name: Roll back on failure
         if: failure()
         run: |
           echo "Smoke tests failed -- rolling back to previous revision"
-          kubectl rollout undo deployment/catsdogs-inference
+          kubectl rollout undo deployment/catsdogs-inference || true
           exit 1
