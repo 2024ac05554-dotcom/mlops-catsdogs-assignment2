@@ -33,9 +33,6 @@ jobs:
           pip install -r requirements.txt --extra-index-url https://download.pytorch.org/whl/cpu
 
       - name: Generate demo data & train baseline model
-        # In a real run this step is replaced by `dvc pull` to fetch the
-        # DVC-tracked dataset/model artifacts committed by M1. Kept here so
-        # the pipeline is fully self-contained and reproducible in CI.
         run: |
           python scripts/generate_dummy_data.py --per_class 40
           python -m src.train --epochs 2 --batch_size 8
@@ -72,7 +69,7 @@ jobs:
       - name: Smoke-test the built image
         run: |
           docker run -d --name ci-smoke -p 8000:8000 ${{ env.IMAGE_NAME }}:${{ github.sha }}
-          bash scripts/smoke_test.sh http://localhost:8000
+          bash scripts/smoke_test.sh http://localhost:8000 tests/fixtures/sample_cat.jpg
           docker stop ci-smoke
 
       - name: Push Docker image to GHCR

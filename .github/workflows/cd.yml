@@ -51,7 +51,7 @@ jobs:
           sleep 5
 
       - name: Run post-deploy smoke tests (health + prediction)
-        run: bash scripts/smoke_test.sh http://localhost:8000
+        run: bash scripts/smoke_test.sh http://localhost:8000 tests/fixtures/sample_cat.jpg
 
       - name: Roll back on failure
         if: failure()
