@@ -1,19 +1,14 @@
 # MLOps Pipeline: Cats vs Dogs Classification (Pet Adoption Platform)
 
-**Course:** MLOps (S1-25_AIMLCZG523) — Assignment 2
-End-to-end MLOps pipeline covering model development, experiment tracking,
-packaging, containerization, CI, CD, and monitoring — using only open-source
-tooling (Git, DVC, MLflow, PyTorch, FastAPI, Docker, GitHub Actions,
-Kubernetes/kind, Prometheus).
+\*\*MLOps Assignment 02 (AIMLCZG523)\*\*
 
-> **Note on the dataset:** This repo ships with a small **synthetic** dataset
-> (`scripts/generate_dummy_data.py`) so the entire pipeline can be run,
-> tested, and demonstrated without a slow Kaggle download. It draws simple
-> procedurally-generated "cat" and "dog" shapes with noise. **Before final
-> submission, replace `data/raw/cats` and `data/raw/dogs` with the real
-> images from the
-> [Kaggle Cats and Dogs dataset](https://www.kaggle.com/datasets/salader/dogs-vs-cats)**
-> — no other code changes are required, the pipeline is dataset-agnostic.
+\*\*Student Name - Amit Ashok Saggam\*\*
+
+\*\*Student ID - 2024AC05554\*\*
+
+\## Objective
+
+To design and implement an end-to-end MLOps pipeline for Cats vs Dogs binary image classification, covering model development, experiment tracking, data and model versioning, packaging, containerization, CI/CD-based deployment, and post-deployment monitoring using open-source tools.
 
 ---
 
@@ -58,168 +53,43 @@ mlops-catsdogs/
 
 ## 2. How each module was implemented
 
-### M1 — Model Development & Experiment Tracking (10M)
-- **Versioning**: `git init` + `dvc init` are set up. Code is tracked by Git;
-  `data/raw` and `data/processed` are DVC outputs defined declaratively in
-  `dvc.yaml` (stage `preprocess`), with a local DVC remote configured at
-  `.dvc/config` (swap for S3/GDrive/Azure in production via `dvc remote add`).
-- **Model**: `src/model.py` defines `SimpleCNN`, a 4-block CNN
-  (Conv-BN-ReLU-MaxPool ×4 + FC head) trained from scratch on 224×224 RGB
-  images — satisfies "at least one baseline model." Saved as `models/model.pt`
-  (standard PyTorch serialization).
-- **Experiment tracking**: `src/train.py` uses **MLflow** (`sqlite:///mlflow.db`
-  backend) to log: hyperparameters (epochs, batch size, lr, optimizer,
-  dataset sizes), per-epoch train/val loss & accuracy, final test accuracy,
-  a **confusion matrix plot**, a **loss curve plot**, and the model itself
-  (both as a raw artifact and via `mlflow.pytorch.log_model`).
-- Run it: `dvc repro` (runs both preprocessing and training stages
-  reproducibly) or directly: `python -m src.train --epochs 5`.
-- Inspect experiments: `mlflow ui --backend-store-uri sqlite:///mlflow.db`.
+### M1 — Data Versioning, Model, Experiment Tracking
+- **Git + DVC**: source code in Git; `data/raw` and `data/processed` are DVC pipeline outputs declared in `dvc.yaml`, with a configured DVC remote.
+- **Model**: `src/model.py` — `SimpleCNN`, a 4-block CNN (Conv → BatchNorm → ReLU → MaxPool ×4, then a FC head) trained from scratch on 224×224 RGB images. Saved as `models/model.pt`.
+- **Training**: `src/train.py`, tracked with MLflow (`sqlite:///mlflow.db`). Final run: **4,000 real images** (2,000 cats + 2,000 dogs), 10 epochs, batch size 32, lr 0.001, Adam — **78% test accuracy**. Logs params, per-epoch loss/accuracy, confusion matrix, loss curve, and the model artifact.
+- Two earlier runs (1,000 images, 5 then 15 epochs) only reached ~65–67% and showed overfitting past epoch 7. Scaling to 4,000 images fixed it — documented in the report, not hidden.
 
-### M2 — Model Packaging & Containerization (10M)
-- **Inference service**: `app/main.py`, a FastAPI app with:
-  - `GET /health` — health check (status, model_loaded, model_version)
-  - `POST /predict` — accepts an image file, returns `{label, probabilities, latency_ms}`
-  - `GET /stats` — basic request-count / avg-latency counters (M5)
-  - `GET /metrics` — Prometheus metrics via `prometheus-fastapi-instrumentator` (M5)
-- **Environment spec**: `requirements.txt`, every package version-pinned
-  (torch, torchvision, fastapi, mlflow, uvicorn, scikit-learn, etc.).
-- **Containerization**: `Dockerfile` (python:3.11-slim base, CPU-only torch
-  wheels to keep the image small, built-in `HEALTHCHECK`). Build & run:
-  ```bash
-  docker build -t catsdogs-inference:local .
-  docker run -d -p 8000:8000 catsdogs-inference:local
-  curl http://localhost:8000/health
-  curl -X POST http://localhost:8000/predict -F "file=@data/raw/cats/cat_0000.jpg"
-  ```
-  Or via Compose: `docker compose up --build`.
+### M2 — Packaging & Containerization
+- **API**: `app/main.py` (FastAPI) — `GET /health`, `POST /predict`, `GET /stats`, `GET /metrics`.
+- **Dependencies**: `requirements.txt`, every package version-pinned.
+- **Docker**: `Dockerfile` — `python:3.11-slim` base, CPU-only PyTorch wheels (not the CUDA-bundled default, to keep the image small), built-in `HEALTHCHECK` against `/health`. Built and run locally as `catsdogs-inference:local` (2.47 GB), verified with real predictions on both classes.
 
-### M3 — CI Pipeline for Build, Test & Image Creation (10M)
-- **Tests**: `tests/test_preprocessing.py` (data pre-processing functions —
-  path listing, stratified splitting, manifest writing, transforms) and
-  `tests/test_inference.py` (model forward-pass shape/determinism +ve/-ve
-  API tests). **12/12 tests pass** (`pytest tests/ -v`).
-- **CI** (`.github/workflows/ci.yml`, GitHub Actions): on every push/PR to
-  `main` it checks out the repo, installs pinned dependencies, generates the
-  demo dataset + trains a quick baseline (stands in for `dvc pull` of a real
-  tracked dataset), runs `pytest`, builds the Docker image, smoke-tests the
-  built container, and — on `main` — pushes the image to **GitHub Container
-  Registry (GHCR)** tagged with the commit SHA and `latest`.
+### M3 — CI Pipeline
+- **Tests**: `tests/test_preprocessing.py` + `tests/test_inference.py` — 12/12 passing.
+- **Workflow**: `.github/workflows/ci.yml` — checkout → install deps → train → pytest → build Docker image → smoke test → push to GHCR (on `main`).
+- **Real bug caught and fixed**: the smoke test originally generated a throwaway test image at runtime with PIL, but GitHub's runner didn't have PIL available in that raw bash step. Fixed by committing a static sample image (`tests/fixtures/sample_cat.jpg`) instead.
 
-### M4 — CD Pipeline & Deployment (10M)
-- **Deployment target**: local Kubernetes via **kind** (also works with
-  minikube/microk8s — just swap the cluster-creation step). Manifests:
-  `k8s/deployment.yaml` (2 replicas, resource limits, readiness/liveness
-  probes hitting `/health`) and `k8s/service.yaml` (NodePort 30080).
-  `docker-compose.yml` is provided as an alternative deployment target.
-- **CD/GitOps flow** (`.github/workflows/cd.yml`): triggers automatically
-  when CI succeeds on `main`. Spins up a kind cluster, pulls the freshly
-  built image from GHCR, applies the K8s manifests (image tag substituted
-  via `sed`), waits for rollout, then runs the smoke test.
-- **Smoke tests**: `scripts/smoke_test.sh` polls `/health` until ready, then
-  calls `/predict` with a real image and asserts a valid `label` is
-  returned. **Non-zero exit fails the pipeline**, and the CD workflow rolls
-  back (`kubectl rollout undo`) on failure.
+### M4 — CD Pipeline & Deployment
+- **Target**: local Kubernetes via `kind`, provisioned fresh inside the GitHub Actions runner (this is what actually ran — not a hypothetical minikube/microk8s alternative).
+- **Manifests**: `k8s/deployment.yaml` (2 replicas, resource limits, readiness/liveness probes on `/health`), `k8s/service.yaml` (NodePort 30080).
+- **Workflow**: `.github/workflows/cd.yml` — triggers automatically when CI succeeds on `main`. Pulls the exact image CI just built (tagged by commit SHA), loads it into the kind cluster, applies manifests, waits for rollout, then smoke-tests the live pod. Rolls back on failure.
+- **Real bug caught and fixed**: port-forward and smoke-test were originally separate workflow steps; each GitHub Actions step runs in its own shell, so the backgrounded port-forward process from one step wasn't reachable in the next. Fixed by merging both into a single step.
 
-### M5 — Monitoring, Logs & Final Submission (10M)
-- **Request/response logging**: middleware in `app/main.py` logs method,
-  path, status code, and latency for every request — no image bytes or
-  other sensitive payload data is ever logged.
-- **Metrics**: Prometheus-compatible metrics at `/metrics` (request count,
-  latency histograms, etc. via `prometheus-fastapi-instrumentator`) plus a
-  lightweight in-app counter exposed at `/stats` as a Prometheus-free
-  fallback.
-- **Post-deployment performance tracking**: `scripts/track_performance.py`
-  replays a batch of held-out test images (real labels) against the live
-  `/predict` endpoint, computes accuracy + latency, and appends results to
-  `monitoring/performance_log.csv` — run this periodically (cron / scheduled
-  Action) against production traffic samples to watch for drift.
+### M5 — Monitoring & Post-Deployment Tracking
+- **Request logging**: middleware logs method, path, status, latency — never raw image bytes.
+- **Metrics**: `/metrics` (Prometheus text format, via `prometheus-fastapi-instrumentator`) and `/stats` (simple in-app request count + average latency, no external scraper needed).
+- **Post-deployment tracking**: `scripts/track_performance.py` replays labeled held-out test images against the live `/predict` endpoint and logs accuracy + latency per request to `monitoring/performance_log.csv`.
 
 ---
-
-## 3. Quickstart (reproduce everything locally)
-
-```bash
-# 1. Environment
-python -m venv .venv && source .venv/bin/activate
-pip install -r requirements.txt
-
-# 2. Data (swap in the real Kaggle dataset for submission)
-python scripts/generate_dummy_data.py --per_class 60
-
-# 3. Preprocess + train + track (single reproducible command)
-dvc repro
-# -> writes data/processed/*.csv, models/model.pt, models/metrics.json,
-#    models/loss_curve.png, models/confusion_matrix.png, logs an MLflow run
-
-# 4. Inspect experiments
-mlflow ui --backend-store-uri sqlite:///mlflow.db   # http://localhost:5000
-
-# 5. Run tests
-pytest tests/ -v
-
-# 6. Run the API locally (no Docker)
-uvicorn app.main:app --reload
-
-# 7. Containerize
-docker build -t catsdogs-inference:local .
-docker run -d -p 8000:8000 --name catsdogs catsdogs-inference:local
-
-# 8. Smoke test
-bash scripts/smoke_test.sh http://localhost:8000
-
-# 9. Deploy to a local kind cluster (mirrors the CD pipeline)
-kind create cluster --name catsdogs-cluster
-kind load docker-image catsdogs-inference:local --name catsdogs-cluster
-kubectl apply -f k8s/deployment.yaml -f k8s/service.yaml
-kubectl port-forward svc/catsdogs-inference-svc 8000:8000 &
-bash scripts/smoke_test.sh http://localhost:8000
-
-# 10. Post-deployment performance tracking
-python scripts/track_performance.py --base_url http://localhost:8000 --n 20
-```
-
----
-
-## 4. Verified results (synthetic demo dataset, this repo as-is)
+## Verified results (this run, real data)
 
 | Check | Result |
 |---|---|
-| `dvc repro` (preprocess + train) | ✅ completes, 96/12/12 train/val/test split |
-| Test accuracy (5 epochs) | 100% (trivial synthetic shapes — expect lower, realistic numbers on the real Kaggle dataset) |
-| `pytest tests/ -v` | ✅ 12/12 passed |
-| `/health`, `/predict`, `/stats`, `/metrics` | ✅ all verified locally with `TestClient` and a live `uvicorn` server |
-| `scripts/smoke_test.sh` against live server | ✅ PASS |
-| `scripts/track_performance.py` (10 live requests) | ✅ 100% accuracy, ~16-18ms avg latency logged to CSV |
-
----
-
-## 5. Notes for the real Kaggle dataset
-
-1. Download from Kaggle, extract so you have `data/raw/cats/*.jpg` and
-   `data/raw/dogs/*.jpg` (replace the synthetic images).
-2. `dvc repro -f` to re-run preprocessing/training on the real data (the
-   `-f` forces a re-run since only the *contents* under `data/raw`, not the
-   code, will have changed).
-3. Because real photos are much harder than the synthetic demo shapes,
-   expect several more epochs and possibly a deeper/pretrained backbone
-   (e.g. swap `SimpleCNN` for a fine-tuned `torchvision.models.resnet18`) to
-   reach strong accuracy — the training script, MLflow logging, and
-   everything downstream (API, Docker, CI/CD, monitoring) needs no changes.
-4. Re-run `dvc add`/`dvc push` if you want the raw images themselves
-   (not just the processed manifests) version-controlled through DVC with a
-   real remote (S3/GCS/Azure/GDrive) instead of the local demo remote in
-   `.dvc/config`.
-
----
-
-## 6. Screen recording checklist (<5 min deliverable)
-
-Suggested flow to demonstrate "code change to deployed model prediction":
-1. Show the repo structure and a quick look at `src/train.py` / `app/main.py`.
-2. Make a small code change (e.g. tweak a log message or an endpoint) and `git commit`.
-3. `git push` → show the GitHub Actions **CI** run: tests passing, image built & pushed to GHCR.
-4. Show the **CD** workflow triggering automatically, deploying to the kind cluster, and the smoke test passing.
-5. `curl`/Postman call to the live `/predict` endpoint showing a real prediction.
-6. Show `mlflow ui` with the logged run (params/metrics/confusion matrix/loss curve).
-7. Show `/metrics` or `/stats` and `monitoring/performance_log.csv` from `track_performance.py`.
+| Training data | 4,000 real Kaggle images (3,200 train / 400 val / 400 test) |
+| Test accuracy | 78.0% |
+| `pytest tests/ -v` | 12/12 passed |
+| CI pipeline | Green — tests, build, push to GHCR |
+| CD pipeline | Green — deployed to live `kind` cluster, smoke test passed |
+| Local Docker | Built, run, real predictions confirmed on both classes |
+| `/stats`, `/metrics` | Live and verified via browser and Swagger UI |
+| Post-deployment tracking | Logged to `monitoring/performance_log.csv` |
