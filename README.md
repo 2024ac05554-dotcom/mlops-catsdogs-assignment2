@@ -81,7 +81,7 @@ mlops-catsdogs/
 - **Post-deployment tracking**: `scripts/track_performance.py` replays labeled held-out test images against the live `/predict` endpoint and logs accuracy + latency per request to `monitoring/performance_log.csv`.
 
 ---
-## Verified results (this run, real data)
+## Verified results as below
 
 | Check | Result |
 |---|---|
